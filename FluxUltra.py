@@ -93,18 +93,9 @@ class FluxUltra(Plugin):
             'Content-Type': 'application/json'
         }
         
-        # 确保比例参数完全匹配 MultipickBlock 的选项
-        if aspect not in ["1:1", "3:4", "4:3", "9:16", "16:9"]:
-            aspect = "1:1"  # 如果不匹配，使用默认值
-            
-        # 使用数组形式传递参数，顺序与 Ultra 节点的 inputValues 对应
         data = {
-            "id": "cm3735hi6000bv4ww8b41h712",  # 使用 Ultra 节点的 glif ID
-            "inputs": [
-                prompt,     # 对应 Enhanced_prompt
-                aspect,     # 对应第二个参数（比例）
-                str(is_raw).lower()  # 对应第三个参数（模式）
-            ]
+            "id": "cm3o6bpn000117v6qbl4frhsu",
+            "inputs": [prompt, aspect, str(is_raw).lower()]
         }
         
         try:
@@ -124,31 +115,11 @@ class FluxUltra(Plugin):
             raise
 
     def extract_aspect_ratio(self, prompt: str) -> str:
-        """从提示词中提取宽高比
-        根据 MultipickBlock 的预定义选项严格匹配
-        """
-        # 严格按照 MultipickBlock 中定义的选项顺序和格式
-        valid_ratios = [
-            "1:1",   # 默认值
-            "3:4",
-            "4:3", 
-            "9:16",
-            "16:9"
-        ]
-        
-        # 将用户输入的比例格式标准化（移除多余空格）
-        normalized_prompt = ' ' + prompt.strip() + ' '
-        
-        # 严格匹配完整的比例格式（确保前后有空格，避免部分匹配）
-        for ratio in valid_ratios:
-            pattern = f' {ratio} '
-            if pattern in normalized_prompt:
-                logger.debug(f"[FluxUltra] 提取的比例: {ratio}")
-                return ratio
-                
-        # 未找到有效比例时返回默认值
-        logger.debug("[FluxUltra] 未找到有效比例，使用默认比例: 1:1")
-        return "1:1"
+        """从提示词中提取宽高比"""
+        match = re.search(r'--ar (\d+:\d+)', prompt)
+        ratio = match.group(1) if match else "1:1"
+        logger.debug(f"[FluxUltra] 提取的比例: {ratio}")
+        return ratio
 
     def extract_mode(self, prompt: str) -> bool:
         """从提示词中提取模式参数
@@ -164,23 +135,15 @@ class FluxUltra(Plugin):
 
     def clean_prompt_string(self, prompt: str) -> str:
         """清理提示词中的参数标记"""
-        # 标准化空格
-        prompt = ' ' + prompt.strip() + ' '
-        
-        # 清理比例格式（确保前后有空格，避免误清理）
-        for ratio in ["1:1", "3:4", "4:3", "9:16", "16:9"]:
-            prompt = prompt.replace(f' {ratio} ', ' ')
-            
-        # 清理模式标记
+        prompt = re.sub(r'--ar \d+:\d+', '', prompt)
         prompt = re.sub(r'--raw', '', prompt, flags=re.IGNORECASE)
         prompt = re.sub(r'--default', '', prompt, flags=re.IGNORECASE)
-        
         return prompt.strip()
 
     def get_help_text(self, **kwargs):
         help_text = "FluxUltra绘图插件使用指南：\n"
         help_text += f"1. 使用 {', '.join(self.drawing_prefixes)} 作为命令前缀\n"
-        help_text += "2. 支持的图片比例格式（需要空格分隔）：1:1 (默认值)，3:4 ，4:3 ，9:16 ，16:9 \n"
-        help_text += "3. 使用 '--raw' 选择写实照片模式或 '--default' 选择默认模式（默认为default）\n"
-        help_text += "4. 示例： FU画图 一只可爱的小猫 3:4 --raw\n"
+        help_text += "2. 使用 '--ar' 指定图片比例，例如：--ar 16:9（支持的比例：1:1、16:9、9:16、4:3、3:4，默认为1:1）\n"
+        help_text += "3. 使用 '--raw' 选择写实照片模式，'--default' 或留空选择默认模式\n"
+        help_text += "4. 示例：FU画图 一只机甲熊猫 --ar 16:9 --raw\n"
         return help_text
