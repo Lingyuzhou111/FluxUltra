@@ -1,5 +1,5 @@
 # FluxUltra
-FluxUltra是一款适用于chatgpt-on-wechat的绘图插件，调用glif.app的API基于黑森林最新发布的超强超快速绘画模型Flux 1.1 Pro Ultra模型进行文生图。 模型介绍详见黑森林官网https://blackforestlabs.ai/flux-1-1-ultra/。  它能够根据文本描述直出4K分辨率的高清大图，支持多种图片比例和生成模式。
+FluxUltra是一款适用于chatgpt-on-wechat的绘图插件，调用glif.app的API基于黑森林最新发布的超强超快速绘画模型Flux 1.1 Pro Ultra模型进行文生图。 模型介绍详见黑森林官网https://blackforestlabs.ai/flux-1-1-ultra/。  它能够根据文本描述直出4K分辨率高清大图，支持多种图片比例和生成模式。
 
 ## 基本信息
 - 插件名称：FluxUltra
@@ -23,4 +23,3 @@ FluxUltra是一款适用于chatgpt-on-wechat的绘图插件，调用glif.app的A
 
 ## 使用样例
 ![FluxUltra_Example01](https://github.com/user-attachments/assets/1019a8de-d430-4238-bffd-fe9cd84cd99a)
-![Uploading FluxUltra_Example02.png…]()
