@@ -1,8 +1,16 @@
+# encoding:utf-8
 import os
 import re
 import json
+import time
 import requests
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+import tempfile
 from io import BytesIO
+from datetime import datetime, timedelta
+import threading
+from PIL import Image
 
 import plugins
 from bridge.context import ContextType
@@ -23,16 +31,27 @@ class FluxUltra(Plugin):
     def __init__(self):
         super().__init__()
         try:
-            conf = super().load_config()
-            if not conf:
+            self.config = super().load_config()
+            if not self.config:
                 raise Exception("配置未找到")
             
             # 从配置文件只加载API token
-            self.api_token = conf.get("api_token")
+            self.api_token = self.config.get("api_token")
             if not self.api_token:
                 raise Exception("在配置中未找到API令牌")
             
             self.drawing_prefixes = ["FU画图"]
+            
+            # 配置 requests session
+            self.session = requests.Session()
+            retries = Retry(
+                total=3,  # 总共重试3次
+                backoff_factor=0.5,  # 重试间隔时间
+                status_forcelist=[500, 502, 503, 504],  # 需要重试的HTTP状态码
+                allowed_methods=["GET", "POST"]  # 允许重试的请求方法
+            )
+            self.session.mount('http://', HTTPAdapter(max_retries=retries))
+            self.session.mount('https://', HTTPAdapter(max_retries=retries))
             
             # 注册消息处理器
             self.handlers[Event.ON_HANDLE_CONTEXT] = self.on_handle_context
@@ -69,8 +88,20 @@ class FluxUltra(Plugin):
             image_url = self.generate_image(clean_prompt, aspect, is_raw)
             
             if image_url:
-                # 直接返回图片URL
-                reply = Reply(ReplyType.TEXT, f"图片生成成功，URL: {image_url}")
+                # 下载图片，添加重试和超时机制
+                try:
+                    image_response = self.session.get(image_url, timeout=30)
+                    image_response.raise_for_status()
+                    
+                    # 创建BytesIO对象
+                    image_storage = BytesIO(image_response.content)
+                    
+                    # 创建图片回复
+                    reply = Reply(ReplyType.IMAGE, image_storage)
+                except requests.Timeout:
+                    raise Exception("下载图片超时，请稍后重试")
+                except requests.RequestException as e:
+                    raise Exception(f"下载图片失败: {str(e)}")
             else:
                 reply = Reply(ReplyType.ERROR, "生成图片失败")
                 
@@ -100,7 +131,7 @@ class FluxUltra(Plugin):
         
         try:
             logger.debug(f"[FluxUltra] 发送API请求: {json.dumps(data, ensure_ascii=False)}")
-            response = requests.post(url, headers=headers, json=data)
+            response = self.session.post(url, headers=headers, json=data, timeout=30)
             response.raise_for_status()
             result = response.json()
             
@@ -110,8 +141,14 @@ class FluxUltra(Plugin):
             logger.debug(f"[FluxUltra] API响应成功")
             return result['output']
             
-        except Exception as e:
+        except requests.Timeout:
+            logger.error("[FluxUltra] API请求超时")
+            raise Exception("API请求超时，请稍后重试")
+        except requests.RequestException as e:
             logger.error(f"[FluxUltra] API请求失败: {e}")
+            raise Exception(f"API请求失败: {str(e)}")
+        except Exception as e:
+            logger.error(f"[FluxUltra] 发生未知错误: {e}")
             raise
 
     def extract_aspect_ratio(self, prompt: str) -> str:
@@ -135,10 +172,14 @@ class FluxUltra(Plugin):
 
     def clean_prompt_string(self, prompt: str) -> str:
         """清理提示词中的参数标记"""
-        prompt = re.sub(r'--ar \d+:\d+', '', prompt)
-        prompt = re.sub(r'--raw', '', prompt, flags=re.IGNORECASE)
-        prompt = re.sub(r'--default', '', prompt, flags=re.IGNORECASE)
-        return prompt.strip()
+        # 复制原始提示词，以免修改原始内容
+        cleaned_prompt = prompt[:]
+        cleaned_prompt = re.sub(r'--ar \d+:\d+', '', cleaned_prompt)
+        cleaned_prompt = re.sub(r'--raw', '', cleaned_prompt, flags=re.IGNORECASE)
+        cleaned_prompt = re.sub(r'--default', '', cleaned_prompt, flags=re.IGNORECASE)
+        cleaned_prompt = cleaned_prompt.strip()
+        logger.debug(f"[FluxUltra] 清理后的提示词: {cleaned_prompt}")
+        return cleaned_prompt
 
     def get_help_text(self, **kwargs):
         help_text = "FluxUltra绘图插件使用指南：\n"
